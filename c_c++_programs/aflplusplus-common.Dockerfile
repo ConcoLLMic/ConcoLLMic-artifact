@@ -1,13 +1,13 @@
 #
 # This Dockerfile for AFLplusplus uses Ubuntu 22.04 jammy and
-# installs LLVM 14 for afl-clang-lto support.
+# installs LLVM 16 for afl-clang-lto support.
 #
 # GCC 11 is used instead of 12 because genhtml for afl-cov doesn't like it.
 #
 
 FROM ubuntu:22.04 AS aflplusplus
 LABEL "maintainer"="AFL++ team <afl@aflplus.plus>"
-LABEL "about"="AFLplusplus container image"
+LABEL "about"="AFL++ docker container image"
 
 ### Comment out to enable these features
 # Only available on specific ARM64 boards
@@ -54,7 +54,8 @@ RUN apt-get update && \
     lld-${LLVM_VERSION} lldb-${LLVM_VERSION} llvm-${LLVM_VERSION} \
     llvm-${LLVM_VERSION}-dev llvm-${LLVM_VERSION}-runtime llvm-${LLVM_VERSION}-tools \
     $([ "$(dpkg --print-architecture)" = "amd64" ] && echo gcc-${GCC_VERSION}-multilib gcc-multilib) \
-    $([ "$(dpkg --print-architecture)" = "arm64" ] && echo libcapstone-dev)
+    $([ "$(dpkg --print-architecture)" = "arm64" ] && echo libcapstone-dev) && \
+    rm -rf /var/lib/apt/lists/*
     # gcc-multilib is only used for -m32 support on x86
     # libcapstone-dev is used for coresight_mode on arm64
 
@@ -64,6 +65,7 @@ RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${GCC_VERSION} 0
     update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${LLVM_VERSION} 0 && \
     update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-${LLVM_VERSION} 0
 
+# Needed by unicornafl
 RUN wget -qO- https://sh.rustup.rs | CARGO_HOME=/etc/cargo sh -s -- -y -q --no-modify-path
 ENV PATH=$PATH:/etc/cargo/bin
 
@@ -74,8 +76,8 @@ ENV AFL_SKIP_CPUFREQ=1
 ENV AFL_TRY_AFFINITY=1
 ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1
 
-RUN git clone --depth=1 https://github.com/vanhauser-thc/afl-cov && \
-    (cd afl-cov && make install) && rm -rf afl-cov
+RUN git clone --depth=1 https://github.com/AFLplusplus/cov-analysis && \
+    (cd cov-analysis && make install) && rm -rf cov-analysis
 
 WORKDIR /
 RUN git clone https://github.com/AFLplusplus/AFLplusplus.git
@@ -87,6 +89,9 @@ ARG CXX=g++-$GCC_VERSION
 
 # Used in CI to prevent a 'make clean' which would remove the binaries to be tested
 ARG TEST_BUILD
+
+RUN python3 -m venv .venv
+ENV PATH="/AFLplusplus/.venv/bin:$PATH"
 
 RUN sed -i.bak 's/^	-/	/g' GNUmakefile && \
     make clean && make distrib && \
